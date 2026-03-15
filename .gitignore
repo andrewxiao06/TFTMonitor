@@ -5,3 +5,8 @@
 
 /.specstory/**
 /.cursorindexingignore
+
+/specstory/**
+/specstory/history/**
+
+.env
