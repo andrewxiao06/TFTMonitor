@@ -1,10 +1,9 @@
 """Riot API client for TFT match history and player lookup."""
-import time
 import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from riotwatcher import TftWatcher, ApiError
+from riotwatcher import TftWatcher, RiotWatcher, ApiError
 
 from config import get_settings
 from models.schemas import MatchSummary, GameCount
@@ -13,17 +12,28 @@ logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
-_watcher: Optional[TftWatcher] = None
+_tft_watcher: Optional[TftWatcher] = None
+_riot_watcher: Optional[RiotWatcher] = None
 
 
 def get_watcher() -> TftWatcher:
-    """Return a shared TftWatcher instance."""
-    global _watcher
-    if _watcher is None:
+    """Return a shared TftWatcher instance (for TFT match endpoints)."""
+    global _tft_watcher
+    if _tft_watcher is None:
         if not settings.riot_api_key:
             raise ValueError("RIOT_API_KEY is not set in .env")
-        _watcher = TftWatcher(settings.riot_api_key)
-    return _watcher
+        _tft_watcher = TftWatcher(settings.riot_api_key)
+    return _tft_watcher
+
+
+def get_riot_watcher() -> RiotWatcher:
+    """Return a shared RiotWatcher instance (for account/PUUID lookup)."""
+    global _riot_watcher
+    if _riot_watcher is None:
+        if not settings.riot_api_key:
+            raise ValueError("RIOT_API_KEY is not set in .env")
+        _riot_watcher = RiotWatcher(settings.riot_api_key)
+    return _riot_watcher
 
 
 def get_puuid(game_name: str, tag_line: str, region: str) -> str:
@@ -31,7 +41,7 @@ def get_puuid(game_name: str, tag_line: str, region: str) -> str:
     Look up a player's PUUID by Riot ID (game_name#tag_line).
     region should be one of: americas, europe, asia, sea
     """
-    watcher = get_watcher()
+    watcher = get_riot_watcher()
     try:
         account = watcher.account.by_riot_id(region, game_name, tag_line)
         return account["puuid"]
@@ -64,7 +74,7 @@ def get_match_ids(
     Fetch a list of recent TFT match IDs for a given PUUID.
     start_time is an optional Unix epoch (seconds) to filter from.
     """
-    watcher = get_watcher()
+    watcher = get_watcher()  # TftWatcher
     try:
         match_ids = watcher.match.by_puuid(
             region=region,
@@ -80,7 +90,7 @@ def get_match_ids(
 
 def get_match_detail(match_id: str, region: str) -> dict:
     """Fetch full match data for a given match ID."""
-    watcher = get_watcher()
+    watcher = get_watcher()  # TftWatcher
     try:
         return watcher.match.by_id(region=region, match_id=match_id)
     except ApiError as e:
