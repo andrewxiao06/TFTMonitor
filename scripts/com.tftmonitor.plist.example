@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS Launch Agent — copy to ~/Library/LaunchAgents/com.tftmonitor.plist
+  Then: launchctl load ~/Library/LaunchAgents/com.tftmonitor.plist
+
+  1. Copy this file:
+     cp scripts/com.tftmonitor.plist.example ~/Library/LaunchAgents/com.tftmonitor.plist
+  2. Edit paths inside if your username or project path differs.
+  3. chmod +x scripts/start_tft_monitor.sh
+  4. mkdir -p logs   (optional, for log files below)
+  5. launchctl load ~/Library/LaunchAgents/com.tftmonitor.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tftmonitor</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/andrewxiao/Documents/projects/TFTMonitor/scripts/start_tft_monitor.sh</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/andrewxiao/Documents/projects/TFTMonitor</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/Users/andrewxiao/Documents/projects/TFTMonitor/logs/uvicorn.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/andrewxiao/Documents/projects/TFTMonitor/logs/uvicorn.err.log</string>
+</dict>
+</plist>

@@ -10,3 +10,6 @@
 /specstory/history/**
 
 .env
+logs/
+__pycache__/
+.venv/
