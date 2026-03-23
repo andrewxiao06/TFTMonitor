@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 # Session game counter — incremented each time EndOfGame is detected
 session_game_count: int = 0
+_game_counted_for_current_match: bool = False
 
 # Callback to run when a game ends — set by play_limiter in Phase 3
 _on_game_end_callback: Optional[Callable] = None
@@ -36,12 +37,19 @@ def _get_connector() -> Connector:
     @_connector.ws.register("/lol-gameflow/v1/gameflow-phase")
     async def on_gameflow_change(connection, event):
         """Fires every time the gameflow phase changes."""
+        global _game_counted_for_current_match
         phase = event.data
         logger.info("Gameflow phase changed: %s", phase)
 
-        if phase == "EndOfGame":
+        # Reset per-match guard when a new game starts.
+        if phase in ("GameStart", "InProgress"):
+            _game_counted_for_current_match = False
+
+        # Treat PreEndOfGame as finished; some clients skip EndOfGame event.
+        if phase in ("PreEndOfGame", "EndOfGame") and not _game_counted_for_current_match:
             global session_game_count
             session_game_count += 1
+            _game_counted_for_current_match = True
             logger.info("Game ended. Session total: %d", session_game_count)
 
             if _on_game_end_callback is not None:
