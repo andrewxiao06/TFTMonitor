@@ -63,6 +63,6 @@ def set_on_game_end(callback: Callable) -> None:
 
 def start_monitor() -> None:
     """Start the LCU connector (blocking). Run in a background thread."""
-    logger.info("Starting LCU monitor — waiting for League client...")
+    logger.info("Starting LCU monitor - waiting for League client...")
     connector = _get_connector()
     connector.start()
