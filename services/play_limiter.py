@@ -79,10 +79,18 @@ def on_game_end(session_game_count: int) -> None:
             )
         return
 
+    over_by = session_game_count - max(settings.session_game_cap, settings.daily_game_cap) + 1
+
     if over_daily:
-        msg = f"You've hit your daily cap of {settings.daily_game_cap} games. Time to stop!"
+        msg = (
+            f"Game {session_game_count}: You're {over_by} game(s) over your "
+            f"daily cap of {settings.daily_game_cap}. Stop playing!"
+        )
     else:
-        msg = f"You've hit your session cap of {settings.session_game_cap} games. Take a break!"
+        msg = (
+            f"Game {session_game_count}: You're {over_by} game(s) over your "
+            f"session cap of {settings.session_game_cap}. Take a break!"
+        )
 
     logger.warning(msg)
 
