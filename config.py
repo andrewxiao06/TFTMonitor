@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     enable_notification: bool = True
     enable_force_close: bool = False
     force_close_delay_seconds: int = 8
+    force_close_block_minutes: int = 30
 
     # Match history polling interval (seconds)
     match_poll_interval: int = 90

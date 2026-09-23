@@ -1,5 +1,6 @@
 """Play-time limiting logic — runs after each game ends."""
 import logging
+import threading
 import time
 import platform
 
@@ -12,45 +13,119 @@ logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
+# Substring match (case-insensitive) against psutil process names.
+# RiotClientServices is the background launcher that can silently
+# relaunch the League client after it's been killed, so it must be
+# included or the "block reopening" behavior won't hold.
 RIOT_PROCESS_NAMES_WINDOWS = [
-    "RiotClientUx.exe",
-    "LeagueClientUx.exe",
-    "League of Legends.exe",
+    "riotclientservices.exe",
+    "riotclientux.exe",
+    "leagueclient.exe",
+    "leagueclientux.exe",
+    "league of legends.exe",
 ]
 RIOT_PROCESS_NAMES_MAC = [
-    "RiotClientUx",
-    "LeagueClientUx",
-    "League of Legends",
+    "riotclientservices",
+    "riotclientux",
+    "leagueclientux",
+    "league of legends",
 ]
+
+# Guards the shared block deadline so a new game-end event can extend
+# an in-progress block window instead of racing a second watcher thread.
+_block_lock = threading.Lock()
+_block_deadline = 0.0
+_watcher_thread: threading.Thread | None = None
 
 
 def _get_process_names() -> list[str]:
-    """Return the correct process names for the current OS."""
+    """Return the correct process name fragments for the current OS."""
     if platform.system() == "Windows":
         return RIOT_PROCESS_NAMES_WINDOWS
     return RIOT_PROCESS_NAMES_MAC
 
 
+def _terminate_process(proc: psutil.Process) -> None:
+    """Kill a process outright. SIGTERM is routinely ignored/handled by
+    the Riot client, so go straight to SIGKILL and confirm it's dead."""
+    try:
+        proc.kill()
+        proc.wait(timeout=3)
+    except (psutil.NoSuchProcess, psutil.TimeoutExpired, psutil.AccessDenied):
+        pass
+
+
+def _sweep_riot_processes() -> list[str]:
+    """Find and kill every running Riot/League process. Returns the names killed."""
+    targets = _get_process_names()
+    killed = []
+    for proc in psutil.process_iter(["pid", "name"]):
+        try:
+            name = proc.info["name"] or ""
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+        if any(target in name.lower() for target in targets):
+            _terminate_process(proc)
+            killed.append(name)
+    return killed
+
+
+def _watch_and_block(duration_seconds: float, poll_interval: float = 2.0) -> None:
+    """Keep sweeping and killing Riot/League processes until the block
+    window expires, so re-launching the game doesn't just undo the close."""
+    global _block_deadline
+
+    with _block_lock:
+        _block_deadline = max(_block_deadline, time.monotonic() + duration_seconds)
+
+    logger.info("Blocking Riot/League from reopening for %.0f minute(s).", duration_seconds / 60)
+
+    while True:
+        with _block_lock:
+            deadline = _block_deadline
+        if time.monotonic() >= deadline:
+            break
+        killed = _sweep_riot_processes()
+        if killed:
+            logger.info("Blocked relaunch attempt, terminated: %s", ", ".join(killed))
+        time.sleep(poll_interval)
+
+    logger.info("Riot/League block window ended.")
+
+
 def _kill_riot_client() -> None:
-    """Terminate Riot/League client processes after a short delay."""
+    """Terminate Riot/League client processes and keep them closed for a while.
+
+    Runs on its own thread (see on_game_end) since it sleeps and then
+    polls for the duration of the block window — it must not block the
+    asyncio event loop the LCU monitor runs on.
+    """
+    global _watcher_thread
+
     delay = settings.force_close_delay_seconds
     logger.info("Force-close enabled. Waiting %d seconds before closing...", delay)
     time.sleep(delay)
 
-    process_names = _get_process_names()
-    killed = []
-    for proc in psutil.process_iter(["pid", "name"]):
-        try:
-            if proc.info["name"] in process_names:
-                proc.terminate()
-                killed.append(proc.info["name"])
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
-
+    killed = _sweep_riot_processes()
     if killed:
         logger.info("Terminated processes: %s", ", ".join(killed))
     else:
         logger.info("No Riot/League processes found to terminate.")
+
+    block_minutes = settings.force_close_block_minutes
+    if block_minutes <= 0:
+        return
+
+    if _watcher_thread is not None and _watcher_thread.is_alive():
+        with _block_lock:
+            global _block_deadline
+            _block_deadline = time.monotonic() + block_minutes * 60
+        logger.info("Extended existing block window by %d minute(s).", block_minutes)
+    else:
+        _watcher_thread = threading.Thread(
+            target=_watch_and_block, args=(block_minutes * 60,), daemon=True
+        )
+        _watcher_thread.start()
 
 
 def on_game_end(session_game_count: int) -> None:
@@ -98,4 +173,4 @@ def on_game_end(session_game_count: int) -> None:
         send_notification("TFT Monitor — Limit Reached", msg)
 
     if settings.enable_force_close:
-        _kill_riot_client()
+        threading.Thread(target=_kill_riot_client, daemon=True).start()

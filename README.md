@@ -105,6 +105,7 @@ SESSION_GAME_CAP=5
 ENABLE_NOTIFICATION=true
 ENABLE_FORCE_CLOSE=false
 FORCE_CLOSE_DELAY_SECONDS=8
+FORCE_CLOSE_BLOCK_MINUTES=30
 
 # Polling / server
 MATCH_POLL_INTERVAL=90
@@ -224,6 +225,7 @@ Disable by opening Task Scheduler and disabling/deleting the `TFT Monitor` task.
 - Do not commit `.env` (already gitignored).
 - Rotate Riot API key if accidentally exposed.
 - Keep `ENABLE_FORCE_CLOSE=false` until you verify notifications and flow.
+- When enabled, force-close does a hard kill (SIGKILL) of Riot/League processes, then keeps re-killing any relaunch attempt for `FORCE_CLOSE_BLOCK_MINUTES` — this is what actually prevents reopening the game, not just closing it once.
 
 ## Troubleshooting
 
